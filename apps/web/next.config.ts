@@ -1,14 +1,10 @@
 import type { NextConfig } from "next";
 
-const API_URL = (process.env.API_URL || "http://localhost:8000").replace(/\/$/, "");
-
 const nextConfig: NextConfig = {
-  output: "standalone",
+  // Standalone output is for the Docker/Railway deployment; Vercel builds its own output.
+  output: process.env.VERCEL ? undefined : "standalone",
   poweredByHeader: false,
-  // The browser only ever talks to this origin; /api/* is proxied to the FastAPI service.
-  async rewrites() {
-    return [{ source: "/api/:path*", destination: `${API_URL}/:path*` }];
-  },
+  // /api/* is proxied to the FastAPI service by src/app/api/[...path]/route.ts (API_URL read at runtime).
 };
 
 export default nextConfig;
