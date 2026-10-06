@@ -19,6 +19,7 @@ class Settings(BaseSettings):
     public_url: str = ""
     # Comma separated list of hosts allowed as OAuth redirect targets for MCP clients.
     oauth_allowed_redirect_hosts: str = "claude.ai,claude.com,localhost,127.0.0.1"
+    # Optional allow-list of browser origins (comma separated). Empty = any origin, but never with credentials.
     cors_origins: str = ""
     session_cookie_name: str = "pos_session"
 
@@ -30,6 +31,10 @@ class Settings(BaseSettings):
         elif url.startswith("postgresql://"):
             url = "postgresql+psycopg://" + url[len("postgresql://"):]
         return url
+
+    @property
+    def cors_list(self) -> list[str]:
+        return [o.strip().rstrip("/") for o in self.cors_origins.split(",") if o.strip()]
 
     @property
     def is_production(self) -> bool:

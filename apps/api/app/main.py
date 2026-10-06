@@ -9,6 +9,7 @@ from fastapi.responses import JSONResponse
 import app.models  # noqa: F401  (registers every model)
 from app.api import oauth, routes
 from app.core import db as dbmod
+from app.core.config import get_settings
 from app.core.errors import AppError
 from app.domains.identity.service import ensure_owner
 from app.mcp.auth import McpAuth
@@ -31,8 +32,14 @@ def create_app() -> FastAPI:
             yield
 
     app = FastAPI(title="Personal OS API", version="1.0.0", lifespan=lifespan)
+    # The web app talks to this API through its own origin (/api rewrite), so browsers don't need CORS for it.
+    # CORS_ORIGINS restricts which browser origins may call the API directly; unset = any origin, no cookies.
+    origins = get_settings().cors_list
     app.add_middleware(
-        CORSMiddleware, allow_origins=["*"], allow_methods=["*"], allow_headers=["*"],
+        CORSMiddleware,
+        allow_origins=origins or ["*"],
+        allow_credentials=bool(origins),
+        allow_methods=["*"], allow_headers=["*"],
         expose_headers=["WWW-Authenticate", "Mcp-Session-Id"],
     )
 

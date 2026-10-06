@@ -121,3 +121,30 @@ def test_login_is_rate_limited(client):
         assert client.post("/auth/login", json={"email": "owner@test.dev", "password": "wrong"}).status_code == 401
     r = client.post("/auth/login", json={"email": "owner@test.dev", "password": "supersecret1"})
     assert r.status_code == 429
+
+
+def test_cors_defaults_to_any_origin_without_credentials(client):
+    r = client.options("/tasks", headers={"Origin": "https://qualquer.site", "Access-Control-Request-Method": "GET"})
+    assert r.headers.get("access-control-allow-origin") == "*"
+    assert "access-control-allow-credentials" not in r.headers
+
+
+def test_cors_allow_list_is_enforced(monkeypatch):
+    from app.core.config import get_settings
+
+    monkeypatch.setenv("CORS_ORIGINS", "https://personal-agentos.vercel.app/")
+    get_settings.cache_clear()
+    try:
+        from fastapi.testclient import TestClient
+
+        from app.main import create_app
+
+        with TestClient(create_app()) as c:
+            ok = c.options("/tasks", headers={"Origin": "https://personal-agentos.vercel.app", "Access-Control-Request-Method": "GET"})
+            assert ok.headers["access-control-allow-origin"] == "https://personal-agentos.vercel.app"
+            assert ok.headers["access-control-allow-credentials"] == "true"
+            bad = c.options("/tasks", headers={"Origin": "https://evil.example", "Access-Control-Request-Method": "GET"})
+            assert "access-control-allow-origin" not in bad.headers
+    finally:
+        monkeypatch.undo()
+        get_settings.cache_clear()

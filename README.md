@@ -80,6 +80,7 @@ Crie um projeto com **3 serviços**: Postgres, `api` e `web`.
 | `ENVIRONMENT` | `production` (cookie `Secure`; exige `ADMIN_PASSWORD`) |
 | `PORT` | `8000` (para a rede privada) |
 | `PUBLIC_URL` | URL pública do serviço `api`, ex.: `https://personal-os-api.up.railway.app` (*Settings → Networking → Generate Domain*) |
+| `CORS_ORIGINS` | *(opcional)* origens de navegador autorizadas a chamar a API direto, ex.: `https://seu-app.vercel.app`. O app web não precisa (usa o proxy `/api`); sem a variável, qualquer origem é aceita, mas **sem cookies**. |
 
 **3. Serviço `web`**: mesmo repositório, **Root Directory = `apps/web`**.
 
