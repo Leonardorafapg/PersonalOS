@@ -1,11 +1,12 @@
 "use client";
 
 import {
-  Activity, BookOpen, CalendarRange, Dumbbell, FolderKanban, ListChecks, MoreHorizontal, Plus, Settings, Sun,
+  Activity, BookOpen, CalendarRange, Dumbbell, FolderKanban, ListChecks, MoreHorizontal, PanelLeftClose, PanelLeftOpen,
+  Plus, Settings, Sun,
 } from "lucide-react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import type { ReactNode } from "react";
+import { useSyncExternalStore, type ReactNode } from "react";
 import { useContextQ } from "@/lib/hooks";
 import { SheetHost, useSheets } from "./sheets/host";
 import { cx } from "./ui";
@@ -26,16 +27,48 @@ export const MORE_ITEMS = MORE;
 
 const active = (path: string, href: string) => (href === "/" ? path === "/" : path === href || path.startsWith(href + "/"));
 
-function Brand() {
+function Brand({ compact }: { compact?: boolean }) {
   return (
     <div className="flex items-center gap-2.5">
-      <span className="grid size-8 place-items-center rounded-[10px] bg-ink">
+      <span className="relative grid size-8 shrink-0 place-items-center rounded-[10px] bg-ink">
         <span className="size-3.5 rounded-full border-2 border-inkfg" />
-        <span className="absolute size-1.5 translate-x-[7px] -translate-y-[7px] rounded-full bg-accent" />
+        <span className="absolute right-1 top-1 size-1.5 rounded-full bg-accent" />
       </span>
-      <span className="text-[17px] font-semibold tracking-tight">Personal OS</span>
+      {!compact && <span className="whitespace-nowrap text-[17px] font-semibold tracking-tight">Personal OS</span>}
     </div>
   );
+}
+
+// Desktop sidebar: expanded (labels) or collapsed (thin, icons only). The choice is remembered on this device.
+const NAV_KEY = "pos-nav-collapsed";
+const NAV_EVENT = "pos-nav-collapsed-change";
+
+function useNavCollapsed(): [boolean, (v: boolean) => void] {
+  const collapsed = useSyncExternalStore(
+    (cb) => {
+      window.addEventListener(NAV_EVENT, cb);
+      window.addEventListener("storage", cb);
+      return () => {
+        window.removeEventListener(NAV_EVENT, cb);
+        window.removeEventListener("storage", cb);
+      };
+    },
+    () => {
+      try {
+        return localStorage.getItem(NAV_KEY) === "1";
+      } catch {
+        return false;
+      }
+    },
+    () => false,
+  );
+  const set = (v: boolean) => {
+    try {
+      localStorage.setItem(NAV_KEY, v ? "1" : "0");
+    } catch { /* ignore */ }
+    window.dispatchEvent(new Event(NAV_EVENT));
+  };
+  return [collapsed, set];
 }
 
 function Fab() {
@@ -65,31 +98,55 @@ function Shell({ children }: { children: ReactNode }) {
   const path = usePathname();
   const wide = path.startsWith("/agenda");
   const moreActive = MORE.some((m) => active(path, m.href)) || path === "/mais";
+  const [collapsed, setCollapsed] = useNavCollapsed();
   return (
-    <div className="min-h-dvh lg:pl-64">
-      <aside className="fixed inset-y-0 left-0 hidden w-64 flex-col border-r border-line bg-bg px-4 py-6 lg:flex">
-        <Link href="/" className="mb-8 px-2"><Brand /></Link>
-        <nav className="flex flex-col gap-1">
+    <div className={cx("min-h-dvh transition-[padding] duration-200", collapsed ? "lg:pl-14" : "lg:pl-64")}>
+      <aside
+        className={cx(
+          "fixed inset-y-0 left-0 z-20 hidden flex-col overflow-hidden border-r border-line bg-bg py-5 transition-[width] duration-200 lg:flex",
+          collapsed ? "w-14 items-center px-2" : "w-64 px-4",
+        )}
+      >
+        <Link href="/" className={cx("mb-7", collapsed ? "" : "px-2")} aria-label="Personal OS" title="Personal OS">
+          <Brand compact={collapsed} />
+        </Link>
+        <nav className={cx("flex flex-col gap-1", collapsed && "items-center")}>
           {[...MAIN, ...MORE].map((i, idx) => (
-            <div key={i.href}>
-              {idx === MAIN.length && <div className="my-3 h-px bg-line" />}
+            <div key={i.href} className={collapsed ? "flex flex-col items-center" : undefined}>
+              {idx === MAIN.length && <div className={cx("my-3 h-px bg-line", collapsed ? "w-6" : "w-full")} />}
               <Link
                 href={i.href}
+                title={collapsed ? i.label : undefined}
+                aria-label={i.label}
+                aria-current={active(path, i.href) ? "page" : undefined}
                 className={cx(
-                  "flex items-center gap-3 rounded-xl px-3 py-2.5 text-[15px] font-medium transition",
+                  "flex items-center rounded-xl text-[15px] font-medium transition",
+                  collapsed ? "size-10 justify-center" : "gap-3 px-3 py-2.5",
                   active(path, i.href) ? "bg-surface2 text-text" : "text-muted hover:bg-surface2/60 hover:text-text",
                 )}
               >
-                <i.icon className="size-[18px]" /> {i.label}
+                <i.icon className="size-[18px] shrink-0" />
+                {!collapsed && <span className="whitespace-nowrap">{i.label}</span>}
               </Link>
             </div>
           ))}
         </nav>
-        <p className="mt-auto px-3 text-xs text-faint">O Claude opera este app via MCP.</p>
+        <div className={cx("mt-auto flex w-full items-center", collapsed ? "justify-center" : "justify-between gap-2 px-3")}>
+          {!collapsed && <p className="text-xs text-faint">O Claude opera este app via MCP.</p>}
+          <button
+            onClick={() => setCollapsed(!collapsed)}
+            aria-label={collapsed ? "Expandir menu" : "Recolher menu"}
+            title={collapsed ? "Expandir menu" : "Recolher menu"}
+            aria-expanded={!collapsed}
+            className="grid size-9 shrink-0 place-items-center rounded-lg text-faint transition hover:bg-surface2 hover:text-text"
+          >
+            {collapsed ? <PanelLeftOpen className="size-[18px]" /> : <PanelLeftClose className="size-[18px]" />}
+          </button>
+        </div>
       </aside>
 
       <main
-        className={cx("mx-auto px-4 lg:px-8", wide ? "max-w-6xl" : "max-w-2xl")}
+        className={cx("mx-auto px-4 lg:px-8", wide ? "max-w-screen-2xl" : "max-w-2xl")}
         style={{ paddingTop: "max(16px, env(safe-area-inset-top))", paddingBottom: "calc(112px + var(--safe-bottom))" }}
       >
         {children}

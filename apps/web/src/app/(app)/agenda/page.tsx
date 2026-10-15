@@ -46,14 +46,17 @@ function place(entries: Entry[], date: string): Placed[] {
 }
 
 function DayColumn({
-  day, gridStart, gridEnd, hour, nowMin, compact, onOpen, onCreate,
+  day, gridStart, gridEnd, height, hourPx, nowMin, compact, onOpen, onCreate,
 }: {
-  day: Day; gridStart: number; gridEnd: number; hour: number; nowMin: number | null; compact: boolean;
+  day: Day; gridStart: number; gridEnd: number; height: string; hourPx: number; nowMin: number | null; compact: boolean;
   onOpen: (e: Entry) => void; onCreate: (date: string, start: string, end: string, flexible: boolean) => void;
 }) {
   const placed = useMemo(() => place(day.entries, day.date), [day]);
-  const top = (m: number) => ((m - gridStart * 60) / 60) * hour;
-  const height = (gridEnd - gridStart) * hour;
+  // Everything is positioned in percentages of the column, so the grid can be a fixed pixel height (phone,
+  // scrolls) or stretch to fill the screen (desktop, whole day visible) without changing any other code.
+  const total = (gridEnd - gridStart) * 60;
+  const pct = (m: number) => ((m - gridStart * 60) / total) * 100;
+  const span = (s: number, e: number) => ((Math.min(e, gridEnd * 60) - Math.max(s, gridStart * 60)) / total) * 100;
 
   return (
     <div
@@ -61,13 +64,13 @@ function DayColumn({
       style={{ height, minWidth: 0 }}
       onClick={(ev) => {
         const rect = ev.currentTarget.getBoundingClientRect();
-        const mins = Math.round(((ev.clientY - rect.top) / hour) * 4) * 15 + gridStart * 60;
+        const mins = Math.round((((ev.clientY - rect.top) / rect.height) * total) / 15) * 15 + gridStart * 60;
         const s = Math.min(Math.max(mins, gridStart * 60), 23 * 60);
         onCreate(day.date, fromMinutes(s), fromMinutes(Math.min(s + 60, 23 * 60 + 59)), false);
       }}
     >
       {Array.from({ length: gridEnd - gridStart }, (_, i) => (
-        <div key={i} className="pointer-events-none absolute inset-x-0 border-t border-line/70" style={{ top: i * hour }} />
+        <div key={i} className="pointer-events-none absolute inset-x-0 border-t border-line/70" style={{ top: `${(i / (gridEnd - gridStart)) * 100}%` }} />
       ))}
       {day.free_windows?.map((w) => {
         const s = minutesOf(hm(w.start));
@@ -79,13 +82,12 @@ function DayColumn({
             aria-label={`Livre ${hm(w.start)} a ${hm(w.end)}`}
             onClick={(ev) => { ev.stopPropagation(); onCreate(day.date, hm(w.start), fromMinutes(Math.min(s + Math.min(60, w.minutes), 23 * 60 + 59)), true); }}
             className="absolute inset-x-0 cursor-copy bg-[var(--free)] transition hover:bg-[var(--free)] hover:brightness-95"
-            style={{ top: top(Math.max(s, gridStart * 60)), height: ((Math.min(en, gridEnd * 60) - Math.max(s, gridStart * 60)) / 60) * hour }}
+            style={{ top: `${pct(Math.max(s, gridStart * 60))}%`, height: `${span(s, en)}%` }}
           />
         );
       })}
       {placed.map(({ e, s, en, lane, lanes }) => {
-        const h = Math.max(((Math.min(en, gridEnd * 60) - Math.max(s, gridStart * 60)) / 60) * hour, 22);
-        const roomy = h >= 44;
+        const roomy = (span(s, en) / 100) * total * (hourPx / 60) >= 40;
         return (
           <button
             key={`${e.id}-${e.start}`}
@@ -93,7 +95,7 @@ function DayColumn({
             className={cx("entry absolute overflow-hidden text-left transition hover:z-10 hover:shadow-md", compact ? "px-1.5 py-1" : "px-2.5 py-1.5")}
             data-cat={e.category} data-mob={e.mobility} data-status={e.status}
             style={{
-              top: top(Math.max(s, gridStart * 60)), height: h - 2,
+              top: `${pct(Math.max(s, gridStart * 60))}%`, height: `calc(${span(s, en)}% - 2px)`, minHeight: 22,
               left: `calc(${(lane / lanes) * 100}% + 2px)`, width: `calc(${100 / lanes}% - 4px)`,
               borderRadius: compact ? 8 : 10,
             }}
@@ -113,7 +115,7 @@ function DayColumn({
         );
       })}
       {nowMin !== null && nowMin >= gridStart * 60 && nowMin <= gridEnd * 60 && (
-        <div className="pointer-events-none absolute inset-x-0 z-20 flex items-center" style={{ top: top(nowMin) }}>
+        <div className="pointer-events-none absolute inset-x-0 z-20 flex items-center" style={{ top: `${pct(nowMin)}%` }}>
           <span className="-ml-1 size-2 rounded-full bg-accent" />
           <span className="h-px flex-1 bg-accent" />
         </div>
@@ -210,18 +212,20 @@ export default function AgendaPage() {
     return g;
   }, [days, ctx.data]);
   const gridEnd = 24;
-  const hour = view === "day" ? 60 : 52;
+  const hour = view === "day" ? 60 : 52; // px per hour on the phone layout (scrolls)
+  // Desktop: stretch the grid to the screen so the whole day/week is visible at once, no inner scrolling.
+  const fit = desktop && view !== "month";
 
   const scroller = useRef<HTMLDivElement>(null);
   const scrolledKey = useRef("");
   useEffect(() => {
     const key = `${view}-${start}`;
-    if (!scroller.current || !sched.data || scrolledKey.current === key) return;
+    if (fit || !scroller.current || !sched.data || scrolledKey.current === key) return;
     scrolledKey.current = key;
     const showsToday = days.some((d) => d.is_today);
     const target = showsToday ? Math.max(nowMin - 90, gridStart * 60) : Math.max(8 * 60 - 30, gridStart * 60);
     scroller.current.scrollTop = ((target - gridStart * 60) / 60) * hour;
-  }, [sched.data, view, start, days, nowMin, gridStart, hour]);
+  }, [sched.data, view, start, days, nowMin, gridStart, hour, fit]);
 
   const go = (dir: -1 | 1) => setAnchor(view === "month" ? addMonths(cur, dir) : addDays(cur, dir * (view === "day" ? 1 : 7)));
   const create = (date: string, s: string, e: string, flexible: boolean) =>
@@ -229,6 +233,10 @@ export default function AgendaPage() {
   const title =
     view === "day" ? `${fmtWeekday(cur)}, ${fmtShort(cur)}` : view === "week" ? `${fmtShort(start)} – ${fmtShort(end)}` : fmtMonthYear(cur);
   const allDay = days.flatMap((d) => d.all_day.map((e) => ({ e, date: d.date })));
+  const gridHeight = fit
+    ? `max(520px, calc(100dvh - ${(view === "week" ? 280 : 220) + (allDay.length ? 34 : 0)}px))`
+    : `${(gridEnd - gridStart) * hour}px`;
+  const hourPx = fit ? 34 : hour;
 
   return (
     <div>
@@ -256,7 +264,7 @@ export default function AgendaPage() {
       ) : (
         <div className="overflow-hidden rounded-2xl border border-line bg-surface">
           <div className="overflow-x-auto">
-            <div className={cx(view === "week" && "min-w-[780px]")}>
+            <div className={cx(view === "week" && !desktop && "min-w-[780px]")}>
               {view === "week" && (
                 <div className="flex border-b border-line">
                   <div style={{ width: GUTTER }} className="shrink-0" />
@@ -280,20 +288,20 @@ export default function AgendaPage() {
                   ))}
                 </div>
               )}
-              <div ref={scroller} className="max-h-[calc(100dvh-300px)] min-h-[420px] overflow-y-auto lg:max-h-[calc(100dvh-220px)]">
+              <div ref={scroller} className={fit ? "overflow-hidden" : "max-h-[calc(100dvh-300px)] min-h-[420px] overflow-y-auto"}>
                 <div className="flex">
                   <div style={{ width: GUTTER }} className="relative shrink-0" aria-hidden>
                     {Array.from({ length: gridEnd - gridStart }, (_, i) => (
-                      <div key={i} className="absolute right-1.5 -translate-y-1/2 text-[10px] tabular-nums text-faint" style={{ top: i * hour }}>
+                      <div key={i} className="absolute right-1.5 -translate-y-1/2 text-[10px] tabular-nums text-faint" style={{ top: `${(i / (gridEnd - gridStart)) * 100}%` }}>
                         {i === 0 ? "" : `${String(gridStart + i).padStart(2, "0")}:00`}
                       </div>
                     ))}
-                    <div style={{ height: (gridEnd - gridStart) * hour }} />
+                    <div style={{ height: gridHeight }} />
                   </div>
                   {days.map((d) => (
                     <DayColumn
-                      key={d.date} day={d} gridStart={gridStart} gridEnd={gridEnd} hour={hour}
-                      nowMin={d.is_today ? nowMin : null} compact={view === "week"}
+                      key={d.date} day={d} gridStart={gridStart} gridEnd={gridEnd} height={gridHeight} hourPx={hourPx}
+                      nowMin={d.is_today ? nowMin : null} compact={view === "week" && !desktop}
                       onOpen={(e) => sheets.entry(e)} onCreate={create}
                     />
                   ))}
