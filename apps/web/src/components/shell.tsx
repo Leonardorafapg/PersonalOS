@@ -46,7 +46,7 @@ function Fab() {
   let label = "Adicionar";
   if (path === "/" || path === "/agenda") onClick = () => sheets.quickAdd(ctx.data?.today);
   else if (path === "/tarefas") { onClick = () => sheets.task(null); label = "Nova tarefa"; }
-  else if (path === "/estudos") { onClick = () => sheets.topic(null); label = "Novo tópico"; }
+  else if (path === "/estudos") { onClick = () => sheets.topic(null); label = "Nova trilha"; }
   else if (path === "/projetos") { onClick = () => sheets.project(null); label = "Novo projeto"; }
   else if (path === "/treinos") { onClick = () => sheets.routine(null); label = "Novo treino"; }
   if (!onClick) return null;

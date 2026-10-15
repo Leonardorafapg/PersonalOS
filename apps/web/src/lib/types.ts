@@ -186,8 +186,24 @@ export interface Topic {
   recent_sessions?: { id: string; date: string; minutes: number; notes?: string }[];
 }
 
+export interface Track {
+  id: string;
+  name: string;
+  status: StudyStatus;
+  progress: number;
+  topics: number;
+  done: number;
+  in_progress: number;
+  available: number;
+  minutes_spent?: number;
+  last_studied?: string;
+  version: number;
+}
+
 export interface AvailableTopic {
   id: string;
+  track_id?: string;
+  track?: string;
   path: string;
   status: StudyStatus;
   progress: number;

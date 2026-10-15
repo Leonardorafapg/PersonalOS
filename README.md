@@ -118,7 +118,7 @@ O token emitido **não expira**. Para cortar o acesso: app → *Configurações 
 | `get_schedule` | Entradas por dia (fixas + flexíveis, recorrências expandidas), plano do dia, **janelas livres calculadas**, sobreposições, estatísticas. |
 | `list_tasks` | Filtros por status, projeto, prazo, `do_date`, texto, ids. Cada tarefa traz projeto, atraso e blocos agendados. |
 | `get_projects` | Lista com contagens e última atividade, ou um projeto com suas tarefas. |
-| `get_study` | Árvore do roadmap com progresso agregado, minutos, pré-requisitos pendentes; ou só os tópicos **disponíveis**. |
+| `get_study` | Árvore do roadmap com progresso agregado, minutos, pré-requisitos pendentes; ou só os tópicos **disponíveis**. Cada tópico de nível raiz é uma **trilha** (Programação, Inglês…): `tracks` resume cada uma e `track_id` filtra por trilha. |
 | `get_routines` | Treinos com cota semanal, **plano de exercícios** (séries, reps, carga, descanso) e últimas sessões (quantos exercícios foram feitos / não feitos). |
 | `get_operation_log` | Trilha de auditoria agrupada por lote (inclui tentativas recusadas). |
 

@@ -106,7 +106,11 @@ def get_context(ctx: Ctx) -> dict:
         },
         "projects": [project_row(p, pstats[p.id]) for p in projs],
         "routines": routines.get_routines(ctx, slim=True),
-        "study": {"overview": study.study_overview(nodes), "available_next": available},
+        "study": {
+            "overview": study.study_overview(nodes),
+            "tracks": study.tracks_summary(nodes, roots),
+            "available_next": available,
+        },
         "upcoming_fixed": [cal.entry_out(ctx, o, cmaps) for o in maps_entries],
         "recent_manual_changes": [
             {"ts": iso(m.ts, tz), "action": m.action, "entity": fmt(m.entity_type, m.entity_id) if m.entity_type else None,

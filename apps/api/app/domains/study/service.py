@@ -64,12 +64,13 @@ StudyTopicUpsert.model_rebuild()
 # --------------------------------------------------------------------------- tree + rollups
 
 class Node:
-    __slots__ = ("t", "children", "leaf", "status", "progress", "leaves", "leaves_done", "minutes", "last", "blocked_by")
+    __slots__ = ("t", "children", "leaf", "container", "status", "progress", "leaves", "leaves_done", "minutes", "last", "blocked_by")
 
     def __init__(self, t: StudyTopic):
         self.t = t
         self.children: list[Node] = []
         self.leaf = True
+        self.container = t.kind == "area"  # areas/tracks group topics; an empty one has nothing to study yet
         self.status = t.status
         self.progress = t.progress
         self.leaves = 0
@@ -106,7 +107,7 @@ def load_tree(ctx: Ctx) -> tuple[dict[int, Node], list[Node]]:
         mins, last = sess.get(n.t.id, (0, None))
         n.minutes, n.last = int(mins or 0), last
         if n.leaf:
-            counted = n.status != "skipped"
+            counted = n.status != "skipped" and not n.container
             n.leaves = 1 if counted else 0
             n.leaves_done = 1 if n.status == "done" else 0
             return
@@ -175,8 +176,17 @@ def node_out(ctx: Ctx, nodes: dict[int, Node], n: Node, depth: int, *, only_open
     return compact(d)
 
 
-def study_overview(nodes: dict[int, Node]) -> dict:
-    leaves = [n for n in nodes.values() if n.leaf and n.status != "skipped"]
+def _ancestors_and_self(nodes: dict[int, Node], n: Node) -> list[Node]:
+    chain, cur = [n], n
+    while cur.t.parent_id and cur.t.parent_id in nodes:
+        cur = nodes[cur.t.parent_id]
+        chain.append(cur)
+    return chain
+
+
+def study_overview(nodes: dict[int, Node], track: Node | None = None) -> dict:
+    pool = list(_dfs([track])) if track else nodes.values()
+    leaves = [n for n in pool if n.leaf and not n.container and n.status != "skipped"]
     total = len(leaves)
     return {
         "topics": total,
@@ -192,24 +202,54 @@ def _dfs(roots: list[Node]):
         yield from _dfs(r.children)
 
 
+def _available_nodes(nodes: dict[int, Node], roots: list[Node]):
+    """Yield (leaf, track_root) for every topic that can be studied now."""
+    for root in roots:
+        for n in _dfs([root]):
+            if not n.leaf or n.container or n.status not in ("not_started", "in_progress") or n.blocked_by:
+                continue
+            anc = nodes.get(n.t.parent_id) if n.t.parent_id else None
+            while anc:  # skip leaves living under a paused / skipped ancestor
+                if anc.t.status in ("paused", "skipped"):
+                    break
+                anc = nodes.get(anc.t.parent_id) if anc.t.parent_id else None
+            else:
+                yield n, root
+
+
+def tracks_summary(nodes: dict[int, Node], roots: list[Node]) -> list[dict]:
+    """One entry per root ("trilha"): its own progress and how many topics can be studied right now."""
+    out = []
+    for r in roots:
+        ov = study_overview(nodes, r)
+        item = {
+            "id": fmt(ET, r.t.id),
+            "name": r.t.name,
+            "status": r.status,
+            "progress": ov["progress"],
+            "topics": ov["topics"],
+            "done": ov["done"],
+            "in_progress": ov["in_progress"],
+            "available": sum(1 for _ in _available_nodes(nodes, [r])),
+            "version": r.t.version,
+        }
+        if r.minutes:
+            item["minutes_spent"] = r.minutes
+        if r.last:
+            item["last_studied"] = r.last.isoformat()
+        out.append(item)
+    return out
+
+
 def available_topics(ctx: Ctx, nodes: dict[int, Node], roots: list[Node], limit: int | None = None) -> list[dict]:
     out = []
-    for n in _dfs(roots):
-        if not n.leaf or n.status not in ("not_started", "in_progress") or n.blocked_by:
-            continue
-        # skip leaves living under a paused / skipped ancestor
-        anc, blocked = nodes.get(n.t.parent_id), False
-        while anc:
-            if anc.t.status in ("paused", "skipped"):
-                blocked = True
-                break
-            anc = nodes.get(anc.t.parent_id) if anc.t.parent_id else None
-        if blocked:
-            continue
+    for n, root in _available_nodes(nodes, roots):
         out.append(
             compact(
                 {
                     "id": fmt(ET, n.t.id),
+                    "track_id": fmt(ET, root.t.id),
+                    "track": root.t.name,
                     "path": _path(nodes, n),
                     "status": n.status,
                     "progress": n.progress,
@@ -227,9 +267,16 @@ def available_topics(ctx: Ctx, nodes: dict[int, Node], roots: list[Node], limit:
 
 
 def get_study(ctx: Ctx, topic_id: str | None = None, depth: int = 2, only_available: bool = False,
-              only_open: bool = False, limit: int = 60) -> dict:
+              only_open: bool = False, limit: int = 60, track_id: str | None = None) -> dict:
     nodes, roots = load_tree(ctx)
-    overview = study_overview(nodes)
+    all_roots = roots
+    track = None
+    if track_id:
+        track = nodes.get(parse(ET, track_id, "track_id"))
+        if track is None or track.t.parent_id is not None:
+            raise validation(f"{track_id} is not a track (a top-level topic). See `tracks` in the response.", "track_id")
+        roots = [track]
+    overview = study_overview(nodes, track)
     if only_available:
         av = available_topics(ctx, nodes, roots, limit)
         return {"overview": overview, "available": av, "count": len(av)}
@@ -239,6 +286,8 @@ def get_study(ctx: Ctx, topic_id: str | None = None, depth: int = 2, only_availa
         if n is None:
             raise validation(f"Topic {topic_id} not found", "topic_id")
         t = n.t
+        if track is not None and track not in _ancestors_and_self(nodes, n):
+            raise validation(f"{topic_id} is not inside track {track_id}", "track_id")
         sessions = ctx.db.scalars(
             select(StudySession)
             .where(StudySession.user_id == ctx.user_id, StudySession.topic_id == tid, StudySession.deleted_at.is_(None))
@@ -264,7 +313,11 @@ def get_study(ctx: Ctx, topic_id: str | None = None, depth: int = 2, only_availa
             )
         )
         return {"topic": detail}
-    return {"overview": overview, "roots": [node_out(ctx, nodes, r, depth, only_open=only_open) for r in roots]}
+    return {
+        "overview": overview,
+        "tracks": tracks_summary(nodes, all_roots),
+        "roots": [node_out(ctx, nodes, r, depth, only_open=only_open) for r in roots],
+    }
 
 
 # --------------------------------------------------------------------------- writing

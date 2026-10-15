@@ -1,0 +1,8 @@
+{
+  "mcpServers": {
+    "personalos": {
+      "type": "http",
+      "url": "https://personalos-production-e69a.up.railway.app/mcp"
+    }
+  }
+}

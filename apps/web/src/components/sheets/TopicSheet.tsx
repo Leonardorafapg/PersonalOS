@@ -104,7 +104,7 @@ function TopicForm({
       open
       onClose={onClose}
       wide
-      title={topic ? topic.name : "Novo tópico"}
+      title={topic ? topic.name : parentId ? "Novo tópico" : "Nova trilha"}
       footer={
         delStep && topic ? (
           <div className="space-y-2">
@@ -117,7 +117,7 @@ function TopicForm({
         ) : (
           <div className="flex gap-2">
             {topic && <Button variant="danger" onClick={() => setDelStep(true)} aria-label="Excluir"><Trash2 className="size-4" /></Button>}
-            <Button className="flex-1" onClick={save} disabled={!f.name.trim()}>{topic ? "Salvar" : "Criar tópico"}</Button>
+            <Button className="flex-1" onClick={save} disabled={!f.name.trim()}>{topic ? "Salvar" : parentId ? "Criar tópico" : "Criar trilha"}</Button>
           </div>
         )
       }
@@ -127,7 +127,7 @@ function TopicForm({
         <input
           autoFocus={!topic}
           className="w-full bg-transparent text-xl font-semibold tracking-tight outline-none placeholder:text-faint"
-          placeholder="Nome do tópico (ex.: Async / Await)"
+          placeholder={!topic && !parentId ? "Nome da trilha (ex.: Programação, Inglês)" : "Nome do tópico (ex.: Async / Await)"}
           value={f.name}
           onChange={(e) => set("name", e.target.value)}
         />

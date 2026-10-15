@@ -6,7 +6,7 @@ import { useToast } from "@/components/providers";
 import { api } from "./api";
 import { nowIn } from "./time";
 import type {
-  AvailableTopic, Context, OpBatch, Preferences, Project, Routine, Schedule, StudyOverview, Task, Topic,
+  AvailableTopic, Context, OpBatch, Preferences, Project, Routine, Schedule, StudyOverview, Task, Topic, Track,
 } from "./types";
 
 const POLL = 45_000; // Claude edits from outside the app; keep the open screen fresh
@@ -49,7 +49,7 @@ export const useRoutines = () =>
 export const useRoadmap = () =>
   useQuery({
     queryKey: ["study", "roadmap"],
-    queryFn: () => api.get<{ overview: StudyOverview; roots: Topic[] }>("/study", { depth: 8 }),
+    queryFn: () => api.get<{ overview: StudyOverview; tracks: Track[]; roots: Topic[] }>("/study", { depth: 8 }),
     refetchInterval: POLL,
   });
 

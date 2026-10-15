@@ -433,3 +433,63 @@ def test_undo_restores_moved_block_times(client):
     mcp_call(client, "undo_operation", {"batch_id": moved["meta"]["batch_id"]}, expect_ok=True)
     day = client.get("/schedule", params={"start": "2026-10-08", "end": "2026-10-08"}).json()["data"]["days"][0]
     assert day["entries"][0]["start"] == "2026-10-08T09:00-03:00" and day["entries"][0]["end"] == "2026-10-08T10:00-03:00"
+
+
+def test_study_tracks_are_separate_roots(client):
+    mcp_call(client, "save_study_topics", {"items": ROADMAP + [{
+        "name": "Inglês", "kind": "area", "client_ref": "en", "children": [
+            {"name": "Vocabulário", "client_ref": "en.vocab"}, {"name": "Listening", "client_ref": "en.listen", "status": "done"}]}]},
+        expect_ok=True)
+    data = mcp_call(client, "get_study", {"depth": 0}, expect_ok=True)["data"]
+    tr = {t["name"]: t for t in data["tracks"]}
+    assert set(tr) == {"Tecnologia", "Inglês"}
+    assert tr["Inglês"]["topics"] == 2 and tr["Inglês"]["done"] == 1 and tr["Inglês"]["progress"] == 50
+    assert tr["Tecnologia"]["available"] == 1 and tr["Inglês"]["available"] == 1
+    assert data["overview"]["topics"] == 6  # all tracks together
+    only = mcp_call(client, "get_study", {"track_id": tr["Inglês"]["id"], "depth": 1}, expect_ok=True)["data"]
+    assert [r["name"] for r in only["roots"]] == ["Inglês"] and only["overview"]["topics"] == 2
+    assert len(only["tracks"]) == 2  # the summary still lists every track
+    av = mcp_call(client, "get_study", {"only_available": True, "track_id": tr["Inglês"]["id"]}, expect_ok=True)["data"]["available"]
+    assert [a["path"] for a in av] == ["Inglês › Vocabulário"] and av[0]["track"] == "Inglês"
+    allav = mcp_call(client, "get_study", {"only_available": True}, expect_ok=True)["data"]["available"]
+    assert {a["track"] for a in allav} == {"Tecnologia", "Inglês"}
+    not_track = mcp_call(client, "get_study", {"track_id": av[0]["id"]})
+    assert not_track["error"]["code"] == "VALIDATION"
+    ctx = mcp_call(client, "get_context", expect_ok=True)["data"]["study"]
+    assert len(ctx["tracks"]) == 2
+
+
+def test_empty_track_is_not_a_study_topic(client):
+    mcp_call(client, "save_study_topics", {"items": [{"name": "Violão", "kind": "area", "client_ref": "vi"}]}, expect_ok=True)
+    data = mcp_call(client, "get_study", {"depth": 0}, expect_ok=True)["data"]
+    t = data["tracks"][0]
+    assert (t["topics"], t["available"], t["progress"]) == (0, 0, 0) and data["overview"]["topics"] == 0
+    assert mcp_call(client, "get_study", {"only_available": True}, expect_ok=True)["data"]["available"] == []
+    # once it has a topic, only the topic counts
+    mcp_call(client, "save_study_topics", {"items": [{"name": "Acordes", "parent_id": t["id"]}]}, expect_ok=True)
+    t = mcp_call(client, "get_study", {"depth": 0}, expect_ok=True)["data"]["tracks"][0]
+    assert (t["topics"], t["available"]) == (1, 1)
+
+
+def test_tracks_with_the_same_name_stay_separate(client):
+    for ref in ("a", "b"):
+        mcp_call(client, "save_study_topics", {"items": [{"name": "Inglês", "kind": "area", "client_ref": ref,
+                                                          "children": [{"name": f"Tópico {ref}", "client_ref": f"{ref}.1"}]}]},
+                 expect_ok=True)
+    tracks = mcp_call(client, "get_study", {"depth": 0}, expect_ok=True)["data"]["tracks"]
+    assert len(tracks) == 2 and tracks[0]["id"] != tracks[1]["id"]
+    av = mcp_call(client, "get_study", {"only_available": True}, expect_ok=True)["data"]["available"]
+    assert {a["track_id"] for a in av} == {t["id"] for t in tracks}
+    one = mcp_call(client, "get_study", {"only_available": True, "track_id": tracks[0]["id"]}, expect_ok=True)["data"]["available"]
+    assert len(one) == 1 and one[0]["track_id"] == tracks[0]["id"]
+
+
+def test_track_id_scopes_topic_detail(client):
+    mcp_call(client, "save_study_topics", {"items": ROADMAP + [{"name": "Inglês", "kind": "area", "client_ref": "en2",
+                                                               "children": [{"name": "Vocab", "client_ref": "en2.v"}]}]}, expect_ok=True)
+    tr = {t["name"]: t for t in mcp_call(client, "get_study", {"depth": 0}, expect_ok=True)["data"]["tracks"]}
+    vocab = mcp_call(client, "get_study", {"only_available": True, "track_id": tr["Inglês"]["id"]}, expect_ok=True)["data"]["available"][0]
+    bad = mcp_call(client, "get_study", {"topic_id": vocab["id"], "track_id": tr["Tecnologia"]["id"]})
+    assert bad["error"]["code"] == "VALIDATION"
+    ok = mcp_call(client, "get_study", {"topic_id": vocab["id"], "track_id": tr["Inglês"]["id"]}, expect_ok=True)
+    assert ok["data"]["topic"]["name"] == "Vocab"

@@ -196,12 +196,12 @@ def patch_project(project_id: str, item: projects.ProjectUpsert, user: User = De
 
 # ---------------------------------------------------------------- study
 @router.get("/study")
-def get_study(topic_id: str | None = None, depth: int = 3, only_available: bool = False, only_open: bool = False,
-              user: User = Depends(current_user)):
+def get_study(topic_id: str | None = None, track_id: str | None = None, depth: int = 3, only_available: bool = False,
+              only_open: bool = False, user: User = Depends(current_user)):
     return read(
         user, "get_study",
         lambda ctx: study.get_study(ctx, topic_id, depth=depth, only_available=only_available, only_open=only_open,
-                                    limit=200),
+                                    limit=200, track_id=track_id),
     )
 
 
